@@ -111,3 +111,6 @@ disasm:	main.elf
 
 cpp:
 	$(COMPILE) -E main.c
+
+size:
+	avr-size -C --mcu=$(DEVICE) main.elf
