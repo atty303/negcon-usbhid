@@ -65,6 +65,7 @@ static report_t reportBuffer;
 static int      sinus = 7 << 6, cosinus = 0;
 static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
 
+char lastTimer0Value;
 
 /* The following function advances sin/cos by a fixed angle
  * and stores the difference to the previous coordinates in the report
@@ -114,6 +115,9 @@ usbRequest_t    *rq = (void *)data;
 int __attribute__((noreturn)) main(void)
 {
     uchar   i;
+
+    TCCR0B = 3;
+    OSCCAL = 220;
 
     wdt_enable(WDTO_1S);
     /* Even if you don't use the watchdog, turn it off here. On newer devices,

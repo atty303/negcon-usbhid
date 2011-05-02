@@ -18,7 +18,7 @@ DEVICE     = atmega88p
 CLOCK      = 12800000
 PROGRAMMER = -c diecimila -P ft0 -B 38400
 OBJECTS    = main.o \
-	usbdrv.o usbdrvasm.o oddebug.o osccal.o
+	usbdrv.o usbdrvasm.o oddebug.o
 FUSES      = -U hfuse:w:0xdf:m -U lfuse:w:0xe2:m
 # ATMega88p fuse bits (fuse bits for other devices are different!):
 # Example for 8 MHz internal oscillator

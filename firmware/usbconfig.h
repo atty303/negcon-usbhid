@@ -30,11 +30,11 @@ section at the end of this file).
 /* This is the port where the USB bus is connected. When you configure it to
  * "B", the registers PORTB, PINB and DDRB will be used.
  */
-#define USB_CFG_DMINUS_BIT      4
+#define USB_CFG_DMINUS_BIT      2
 /* This is the bit number in USB_CFG_IOPORT where the USB D- line is connected.
  * This may be any bit in the port.
  */
-#define USB_CFG_DPLUS_BIT       2
+#define USB_CFG_DPLUS_BIT       4
 /* This is the bit number in USB_CFG_IOPORT where the USB D+ line is connected.
  * This may be any bit in the port. Please note that D+ must also be connected
  * to interrupt pin INT0! [You can also use other interrupts, see section
@@ -67,7 +67,7 @@ section at the end of this file).
  * the macros usbDeviceConnect() and usbDeviceDisconnect() (see usbdrv.h).
  * This constant defines the port on which the pullup resistor is connected.
  */
-#define USB_CFG_PULLUP_BIT          4
+#define USB_CFG_PULLUP_BIT          2
 /* This constant defines the bit number in USB_CFG_PULLUP_IOPORT (defined
  * above) where the 1.5k pullup resistor is connected. See description
  * above for details.
@@ -164,11 +164,6 @@ section at the end of this file).
  * (besides debugging) is to flash a status LED on each packet.
  */
 /* #define USB_RESET_HOOK(resetStarts)     if(!resetStarts){hadUsbReset();} */
-#ifndef __ASSEMBLER__
-#include <avr/interrupt.h>  // for sei()
-#include "osccal.h"
-#endif
-#define USB_RESET_HOOK(resetStarts)  if(!resetStarts){cli(); calibrateOscillator(); sei();}
 /* This macro is a hook if you need to know when an USB RESET occurs. It has
  * one parameter which distinguishes between the start of RESET state and its
  * end.
@@ -209,7 +204,7 @@ section at the end of this file).
  * usbFunctionWrite(). Use the global usbCurrentDataToken and a static variable
  * for each control- and out-endpoint to check for duplicate packets.
  */
-#define USB_CFG_HAVE_MEASURE_FRAME_LENGTH   1
+#define USB_CFG_HAVE_MEASURE_FRAME_LENGTH   0
 /* define this macro to 1 if you want the function usbMeasureFrameLength()
  * compiled in. This function can be used to calibrate the AVR's RC oscillator.
  */
@@ -371,11 +366,14 @@ section at the end of this file).
  */
 /* #define USB_INTR_CFG            MCUCR */
 /* #define USB_INTR_CFG_SET        ((1 << ISC00) | (1 << ISC01)) */
+#define USB_INTR_CFG_SET        ((0 << ISC00) | (1 << ISC01))
 /* #define USB_INTR_CFG_CLR        0 */
 /* #define USB_INTR_ENABLE         GIMSK */
 /* #define USB_INTR_ENABLE_BIT     INT0 */
 /* #define USB_INTR_PENDING        GIFR */
 /* #define USB_INTR_PENDING_BIT    INTF0 */
 /* #define USB_INTR_VECTOR         INT0_vect */
+
+#include "osctune.h"
 
 #endif /* __usbconfig_h_included__ */
