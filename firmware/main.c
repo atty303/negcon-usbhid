@@ -284,11 +284,21 @@ usbRequest_t    *rq = (void *)data;
 }
 
 /* ------------------------------------------------------------------------- */
+static void usb_reenumerate(void)
+{
+    uchar   i;
+    usbInit();
+    usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
+    i = 0;
+    while(--i){             /* fake USB disconnect for > 250 ms */
+        wdt_reset();
+        _delay_ms(1);
+    }
+    usbDeviceConnect();
+}
 
 int __attribute__((noreturn)) main(void)
 {
-    uchar   i;
-
     TCCR0B = 3;
     /* OSCCAL = 220; */
 
@@ -304,14 +314,7 @@ int __attribute__((noreturn)) main(void)
      */
     odDebugInit();
     DBG1(0x00, 0, 0);       /* debug output: main starts */
-    usbInit();
-    usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
-    i = 0;
-    while(--i){             /* fake USB disconnect for > 250 ms */
-        wdt_reset();
-        _delay_ms(1);
-    }
-    usbDeviceConnect();
+    usb_reenumerate();
     sei();
     DBG1(0x01, 0, 0);       /* debug output: main loop starts */
     for(;;){                /* main event loop */
