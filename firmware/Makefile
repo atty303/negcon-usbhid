@@ -15,9 +15,10 @@
 # FUSES ........ Parameters for avrdude to flash the fuses appropriately.
 
 DEVICE     = atmega88p
-CLOCK      = 8000000
+CLOCK      = 12800000
 PROGRAMMER = -c diecimila -P ft0 -B 38400
-OBJECTS    = main.o
+OBJECTS    = main.o \
+	usbdrv.o usbdrvasm.o oddebug.o
 FUSES      = -U hfuse:w:0xd9:m -U lfuse:w:0x24:m
 # ATMega8 fuse bits (fuse bits for other devices are different!):
 # Example for 8 MHz internal oscillator
