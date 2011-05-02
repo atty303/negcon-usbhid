@@ -374,6 +374,6 @@ section at the end of this file).
 /* #define USB_INTR_PENDING_BIT    INTF0 */
 /* #define USB_INTR_VECTOR         INT0_vect */
 
-#include "osctune.h"
+#include "libs-device/osctune.h"
 
 #endif /* __usbconfig_h_included__ */
