@@ -117,7 +117,7 @@ int __attribute__((noreturn)) main(void)
     uchar   i;
 
     TCCR0B = 3;
-    OSCCAL = 220;
+    /* OSCCAL = 220; */
 
     wdt_enable(WDTO_1S);
     /* Even if you don't use the watchdog, turn it off here. On newer devices,
