@@ -13,6 +13,179 @@
 
 #include "usbdrv.h"
 #include "oddebug.h"        /* This is also an example for using debug macros */
+#include "config.h"
+
+/* ------------------------------------------------------------------------- */
+/* ------------------------------ PS interface ----------------------------- */
+/* ------------------------------------------------------------------------- */
+
+#define PSOUT USB_OUTPORT(PS_CFG_IOPORTNAME)
+#define PSIN USB_INPORT(PS_CFG_IOPORTNAME)
+#define PSDDR USB_DDRPORT(PS_CFG_IOPORTNAME)
+
+#define PS_PORT_MASK (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT) | _BV(PS_CFG_DAT_BIT))
+
+#define PS_SEL1() { PSOUT |= _BV(PS_CFG_SEL_BIT); }
+#define PS_SEL0() { PSOUT &= ~(_BV(PS_CFG_SEL_BIT)); }
+#define PS_CLK1() { PSOUT |= _BV(PS_CFG_CLK_BIT); }
+#define PS_CLK0() { PSOUT &= ~(_BV(PS_CFG_CLK_BIT)); }
+#define PS_CMD1() { PSOUT |= _BV(PS_CFG_CMD_BIT); }
+#define PS_CMD0() { PSOUT &= ~(_BV(PS_CFG_CMD_BIT)); }
+
+/* ATtiny45 = TCNT1 */
+#define PS_TCNT TCNT2
+/* ATtiny45 = TCCR1 */
+#define PS_TCCR TCCR2B
+/* ATtiny45 = (_BV(3)|_BV(2)|_BV(1)|_BV(0)) */
+#define PS_TCCR_MASK (_BV(2)|_BV(1)|_BV(0))
+#define PS_TCCR_CS_CK1 (0) /* Clock Select: 分周なし */
+#define PS_TCCR_CS_CK8 (_BV(0)) /* Clock Select: 1/8分周 */
+#define PS_TIMER_OVF_VECT TIMER2_OVF_vect
+
+/* PSパッドのCLKの間隔(250KHz/4usec)をタイマーのカウント値へ算出する。
+   実際のクロックは諸々のオーバーヘッドにより250KHzより遅くなるが、
+   PSパッド動作に支障は無いはずである。
+ */
+#define PS_TIMER_CLK_HZ (250L * 1000)
+#define PS_TIMER_CLK_PRESCALING 1
+#define PS_TIMER_CLK_TICK ((F_CPU / PS_TIMER_CLK_PRESCALING) / PS_TIMER_CLK_HZ)
+#if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
+#  define PS_TIMER_CLK_TCCR PS_TCCR_CS_CK1
+#else
+#  error "invalid timer configuration"
+#endif
+/* CLKの間隔を待つタイマーを開始する際に設定するカウント値を算出する。
+   タイマーのオーバーフロー割り込みによりクロックを検出するので、
+   オーバーフロー直前の値からクロック間隔を減算した値となる。
+ */
+#define PS_TIMER_CLK_TCNT (uchar)(0xff - PS_TIMER_CLK_TICK)
+
+/* PSパッドへのデータ転送完了からACKが返るまでのタイマーカウント値を算出する。
+   PS本体はパッドから10KHz/100usec以内に応答がなければ未接続と認識するので、
+   逆説的に常に100usec待てば次のデータ転送が可能となるはずである。
+   よって、ACKを確認せずにPSパッドとコミュニケーションする。
+ */
+#define PS_TIMER_ACK_HZ (10L * 1000)
+#define PS_TIMER_ACK_PRESCALING 1
+#define PS_TIMER_ACK_TICK ((F_CPU / PS_TIMER_ACK_PRESCALING) / PS_TIMER_ACK_HZ)
+#if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
+#  define PS_TIMER_ACK_TCCR PS_TCCR_CS_CK1
+#else
+#  undef PS_TIMER_ACK_PRESCALING
+#  undef PS_TIMER_ACK_TICK
+#  define PS_TIMER_ACK_PRESCALING 8
+#  define PS_TIMER_ACK_TICK ((F_CPU / PS_TIMER_ACK_PRESCALING) / PS_TIMER_ACK_HZ)
+#  if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
+#    define PS_TIMER_ACK_TCCR PS_TCCR_CS_CK8
+#  else
+#    error "invalid ack timer configuration"
+#  endif
+#endif
+#define PS_TIMER_ACK_TCNT (uchar)(0xff - PS_TIMER_ACK_TICK)
+
+
+volatile static char wait_flag = 0;  /* wait_clkで使われる */
+
+static void ps_timer_start(uchar tccr, uchar tcnt)
+{
+    wait_flag = 0;
+    PS_TCCR = (PS_TCCR & ~(PS_TCCR_MASK)) | tccr;
+    PS_TCNT = tcnt;
+}
+
+ISR(PS_TIMER_OVF_VECT)
+{
+    wait_flag = !0;
+    PS_TCCR &= ~(PS_TCCR_MASK);
+}
+
+static void ps_timer_wait(void)
+{
+    for (;;) {
+	if (wait_flag) break;
+    }
+}
+
+static void ps_init(void)
+{
+    /* SEL,CLK,CMDを出力に、DATを入力に設定する */
+    PSDDR = (PSDDR & ~(PS_PORT_MASK)) | (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT));
+    /* DAT入力をプルアップする */
+    PSOUT |= _BV(PS_CFG_DAT_BIT);
+
+    /* FIXME: タイマー割り込みを有効にする */
+    TIMSK2 |= TOIE2;
+
+    PS_SEL1();
+    PS_CLK1();
+    PS_CMD1();
+}
+
+/* コントローラへコマンドを送り、
+   コントローラからの返答を返す */
+static uchar ps_putgetc(uchar cmd)
+{
+    uchar i = 16;
+    uchar data = 0;
+
+    /* PS_CLK1(); */
+    /* PS_CMD1(); */
+
+    while (i--) {
+	ps_timer_start(PS_TIMER_CLK_TCCR, PS_TIMER_CLK_TCNT);
+	if (i & 1) {
+	    PSOUT = (PSOUT & ~(_BV(PS_CFG_CMD_BIT))) | (cmd & 1);
+	    cmd >>= 1;
+	    PS_CLK0();
+	} else {
+	    PS_CLK1();
+	    data |= ((PSIN & _BV(PS_CFG_DAT_BIT)) >> PS_CFG_DAT_BIT);
+	    data <<= 1;
+	}
+	ps_timer_wait();
+    };
+
+    /* PS_CMD1(); */
+
+    /* ACK待ち */
+    ps_timer_start(PS_TIMER_ACK_TCCR, PS_TIMER_ACK_TCNT);
+    ps_timer_wait();
+
+    return data;
+}
+
+/* 
+   outputは33バイト以上必要
+ */
+static void ps_main(uchar *output)
+{
+    uchar data_len;
+
+    PS_SEL0();
+
+    /* 1バイト目: CMD=0x01, DAT=不定 */
+    ps_putgetc(0x01);
+
+    /* 2バイト目: CMD=0x42, DAT=上位4ビット:デバイスタイプ 下位4ビット:data_len */
+    *output = ps_putgetc(0x42);
+    /* 4バイト目以降のデータ転送バイト数 / 2 */
+    data_len = (*output++ & 0x0f);
+#if 0				/* この条件に入るデバイスは無いと思うので省略 */
+    if (!data_len) {
+	data_len = 0x10;
+    }
+#endif
+
+    /* 3バイト目: CMD=0x00, DAT=0x5A */
+    ps_putgetc(0x00);
+
+    while (data_len--) {
+	*output++ = ps_putgetc(0x00);
+	*output++ = ps_putgetc(0x00);
+    }
+
+    PS_SEL1();
+}
 
 /* ------------------------------------------------------------------------- */
 /* ----------------------------- USB interface ----------------------------- */
@@ -118,6 +291,8 @@ int __attribute__((noreturn)) main(void)
 
     TCCR0B = 3;
     /* OSCCAL = 220; */
+
+    ps_init();
 
     wdt_enable(WDTO_1S);
     /* Even if you don't use the watchdog, turn it off here. On newer devices,
