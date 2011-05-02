@@ -6,6 +6,9 @@
  */
 
 #include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/pgmspace.h>
+#include <util/delay.h>
 #include "usbdrv.h"
 
 usbMsgLen_t usbFunctionSetup(uchar setupData[8])
@@ -15,9 +18,18 @@ usbMsgLen_t usbFunctionSetup(uchar setupData[8])
 
 int main(void)
 {
-    /* insert your hardware initialization here */
+    usbInit();
+    usbDeviceDisconnect();
+    {
+	uchar i = 0;
+	while (--i)  _delay_ms(1);
+    }
+    usbDeviceConnect();
+
+    sei();
+
     for(;;){
-        /* insert your main loop code here */
+	usbPoll();
     }
     return 0;   /* never reached */
 }
