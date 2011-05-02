@@ -14,9 +14,9 @@
 #                is connected.
 # FUSES ........ Parameters for avrdude to flash the fuses appropriately.
 
-DEVICE     = atmega8
+DEVICE     = atmega88p
 CLOCK      = 8000000
-PROGRAMMER = -c stk500v2 -P avrdoper
+PROGRAMMER = -c diecimila -P ft0 -B 38400
 OBJECTS    = main.o
 FUSES      = -U hfuse:w:0xd9:m -U lfuse:w:0x24:m
 # ATMega8 fuse bits (fuse bits for other devices are different!):
