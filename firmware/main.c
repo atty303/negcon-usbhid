@@ -3,6 +3,8 @@
  * Author: <insert your name here>
  * Copyright: <insert your copyright message here>
  * License: <insert your license reference here>
+ *
+ * http://blog.livedoor.jp/ikehiro/archives/456433.html
  */
 
 #include <avr/io.h>
@@ -114,7 +116,7 @@ static void ps_init(void)
     PSOUT |= _BV(PS_CFG_DAT_BIT);
 
     /* FIXME: タイマー割り込みを有効にする */
-    TIMSK2 |= TOIE2;
+    /* TIMSK2 |= TOIE2; */
 
     PS_SEL1();
     PS_CLK1();
@@ -125,31 +127,68 @@ static void ps_init(void)
    コントローラからの返答を返す */
 static uchar ps_putgetc(uchar cmd)
 {
-    uchar i = 16;
+    /* uchar i = 16; */
+    uchar i = 8;
     uchar data = 0;
 
-    /* PS_CLK1(); */
-    /* PS_CMD1(); */
+//    PS_CLK1();
+//    PS_CMD1();
+//    _delay_us(1);
 
     while (i--) {
-	ps_timer_start(PS_TIMER_CLK_TCCR, PS_TIMER_CLK_TCNT);
+#if 0
+//	ps_timer_start(PS_TIMER_CLK_TCCR, PS_TIMER_CLK_TCNT);
 	if (i & 1) {
-	    PSOUT = (PSOUT & ~(_BV(PS_CFG_CMD_BIT))) | (cmd & 1);
+	    /* PSOUT = (PSOUT & ~(_BV(PS_CFG_CMD_BIT))) | (cmd & 1); */
+	    if (cmd & 1) {
+		PS_CMD1();
+	    } else {
+		PS_CMD0();
+	    }
 	    cmd >>= 1;
 	    PS_CLK0();
 	} else {
 	    PS_CLK1();
-	    data |= ((PSIN & _BV(PS_CFG_DAT_BIT)) >> PS_CFG_DAT_BIT);
-	    data <<= 1;
+	    data >>= 1;
+	    data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
 	}
-	ps_timer_wait();
-    };
+//	ps_timer_wait();
+	_delay_us(8);
+#else
+/*
+	    if (cmd & 1) {
+		PS_CMD1();
+	    } else {
+		PS_CMD0();
+	    }
+	    cmd >>= 1;
+	    _delay_us(2);
+	    PS_CLK0();
+	    _delay_us(2);
 
-    /* PS_CMD1(); */
+	    PS_CLK1();
+	    _delay_us(2);
+	    data >>= 1;
+	    data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
+	    _delay_us(2);
+*/
+	PS_CLK0();
+	if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
+	cmd >>= 1;
+	_delay_us(10);
+	PS_CLK1();
+	data >>= 1;
+	data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
+	_delay_us(10);
+#endif
+    }
+
+//    PS_CMD1();
 
     /* ACK待ち */
-    ps_timer_start(PS_TIMER_ACK_TCCR, PS_TIMER_ACK_TCNT);
-    ps_timer_wait();
+//    ps_timer_start(PS_TIMER_ACK_TCCR, PS_TIMER_ACK_TCNT);
+//    ps_timer_wait();
+    _delay_us(20);
 
     return data;
 }
@@ -157,10 +196,12 @@ static uchar ps_putgetc(uchar cmd)
 /* 
    outputは33バイト以上必要
  */
-static void ps_main(uchar *output)
+static void ps_read(uchar *output)
 {
     uchar data_len;
 
+      PS_CMD1();
+      PS_CLK1();
     PS_SEL0();
 
     /* 1バイト目: CMD=0x01, DAT=不定 */
@@ -177,14 +218,30 @@ static void ps_main(uchar *output)
 #endif
 
     /* 3バイト目: CMD=0x00, DAT=0x5A */
-    ps_putgetc(0x00);
+    *output++ = ps_putgetc(0x00);
 
     while (data_len--) {
 	*output++ = ps_putgetc(0x00);
 	*output++ = ps_putgetc(0x00);
     }
 
+      PS_CMD1();
+      _delay_ms(1);
     PS_SEL1();
+}
+
+static uchar psdata[33];
+
+static int ps_main(void)
+{
+    ps_read(psdata);
+    if (!(psdata[2] & 0x80)) {
+	return -10;
+    }
+    if (!(psdata[2] & 0x20)) {
+	return 10;
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -278,6 +335,17 @@ usbRequest_t    *rq = (void *)data;
             idleRate = rq->wValue.bytes[1];
         }
     }else{
+	if (rq->bRequest == 0x01) {
+	    usbMsgLen_t len = 16;
+	    if (len > rq->wLength.word)
+		len = rq->wLength.word;
+	    usbMsgPtr = psdata;
+	    psdata[12] = 0xDE;
+	    psdata[13] = 0xAD;
+	    psdata[14] = 0xBE;
+	    psdata[15] = 0xEF;
+	    return len;
+	}
         /* no vendor specific requests implemented */
     }
     return 0;   /* default for not implemented requests: return no data back to host */
@@ -287,7 +355,6 @@ usbRequest_t    *rq = (void *)data;
 static void usb_reenumerate(void)
 {
     uchar   i;
-    usbInit();
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
     i = 0;
     while(--i){             /* fake USB disconnect for > 250 ms */
@@ -302,8 +369,6 @@ int __attribute__((noreturn)) main(void)
     TCCR0B = 3;
     /* OSCCAL = 220; */
 
-    ps_init();
-
     wdt_enable(WDTO_1S);
     /* Even if you don't use the watchdog, turn it off here. On newer devices,
      * the status of the watchdog (on/off, period) is PRESERVED OVER RESET!
@@ -314,6 +379,8 @@ int __attribute__((noreturn)) main(void)
      */
     odDebugInit();
     DBG1(0x00, 0, 0);       /* debug output: main starts */
+    usbInit();
+    ps_init();
     usb_reenumerate();
     sei();
     DBG1(0x01, 0, 0);       /* debug output: main loop starts */
@@ -323,7 +390,9 @@ int __attribute__((noreturn)) main(void)
         usbPoll();
         if(usbInterruptIsReady()){
             /* called after every poll of the interrupt endpoint */
-            advanceCircleByFixedAngle();
+	    reportBuffer.dx = ps_main();
+	    reportBuffer.dy = 0;
+            /* advanceCircleByFixedAngle(); */
             DBG1(0x03, 0, 0);   /* debug output: interrupt report prepared */
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
