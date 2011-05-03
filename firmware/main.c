@@ -1,4 +1,4 @@
-/* -*- c-file-style: "stroustrup"; -*- */
+/* -*- c-file-style: "stroustrup"; indent-tabs-mode: nil; -*- */
 /* Name: main.c
  * Author: <insert your name here>
  * Copyright: <insert your copyright message here>
@@ -57,14 +57,14 @@ static uchar ps_sendrecv(uchar cmd)
     uchar data = 0;
 
     while (i--) {
-	PS_CLK0();
-	if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
-	cmd >>= 1;
-	_delay_us(PS_CFG_CLK_DELAY_US);
-	PS_CLK1();
-	data >>= 1;
-	data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
-	_delay_us(PS_CFG_CLK_DELAY_US);
+        PS_CLK0();
+        if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
+        cmd >>= 1;
+        _delay_us(PS_CFG_CLK_DELAY_US);
+        PS_CLK1();
+        data >>= 1;
+        data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
+        _delay_us(PS_CFG_CLK_DELAY_US);
     }
 
     /* ACK待ち */
@@ -97,7 +97,7 @@ static void ps_read(uchar *output)
     data_len = (*output++ & 0x0f);
     /* data_len == 0 は 0x10 として扱う */
     if (data_len == 0) {
-	data_len = 0x10;
+        data_len = 0x10;
     }
 
     /* 3バイト目: CMD=0x00, DAT=0x5A */
@@ -105,8 +105,8 @@ static void ps_read(uchar *output)
 
     /* 4バイト目以降 */
     while (data_len--) {
-	*output++ = ps_sendrecv(0x00);
-	*output++ = ps_sendrecv(0x00);
+        *output++ = ps_sendrecv(0x00);
+        *output++ = ps_sendrecv(0x00);
     }
 
     /* SELを立ち上げてデバイスとの通信を終了する。 */
@@ -117,10 +117,10 @@ static int ps_main(void)
 {
     ps_read(psdata);
     if (!(psdata[2] & 0x80)) {
-	return -1;
+        return -1;
     }
     if (!(psdata[2] & 0x20)) {
-	return 1;
+        return 1;
     }
     return 0;
 }
@@ -199,13 +199,13 @@ usbRequest_t    *rq = (void *)data;
             idleRate = rq->wValue.bytes[1];
         }
     }else{
-	if (rq->bRequest == 0x01) {
-	    usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
-	    if (len > rq->wLength.word)
-		len = rq->wLength.word;
-	    usbMsgPtr = psdata;
-	    return len;
-	}
+        if (rq->bRequest == 0x01) {
+            usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
+            if (len > rq->wLength.word)
+                len = rq->wLength.word;
+            usbMsgPtr = psdata;
+            return len;
+        }
         /* no vendor specific requests implemented */
     }
     return 0;   /* default for not implemented requests: return no data back to host */
@@ -216,7 +216,7 @@ static void usb_reenumerate(void)
 {
     uchar i = 0;
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
-    while (--i) {	    /* fake USB disconnect for > 250 ms */
+    while (--i) {           /* fake USB disconnect for > 250 ms */
         wdt_reset();
         _delay_ms(1);
     }
@@ -239,8 +239,8 @@ int __attribute__((noreturn)) main(void)
         usbPoll();
         if (usbInterruptIsReady()) {
             /* called after every poll of the interrupt endpoint */
-	    reportBuffer.dx = ps_main();
-	    reportBuffer.dy = 0;
+            reportBuffer.dx = ps_main();
+            reportBuffer.dy = 0;
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
     }
