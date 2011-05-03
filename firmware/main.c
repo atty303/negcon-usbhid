@@ -113,64 +113,78 @@ static void ps_read(uchar *output)
     PS_SEL1();
 }
 
-static int ps_main(void)
-{
-    ps_read(psdata);
-    if (!(psdata[2] & 0x80)) {
-        return -1;
-    }
-    if (!(psdata[2] & 0x20)) {
-        return 1;
-    }
-    return 0;
-}
-
 /* ------------------------------------------------------------------------- */
 /* ----------------------------- USB interface ----------------------------- */
 /* ------------------------------------------------------------------------- */
 
-PROGMEM char usbHidReportDescriptor[52] = { /* USB report descriptor, size must match usbconfig.h */
+
+PROGMEM char usbHidReportDescriptor[63] = { /* USB report descriptor, size must match usbconfig.h */
     0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
-    0x09, 0x02,                    // USAGE (Mouse)
+    0x09, 0x04,                    // USAGE (Joystick)
     0xa1, 0x01,                    // COLLECTION (Application)
     0x09, 0x01,                    //   USAGE (Pointer)
-    0xA1, 0x00,                    //   COLLECTION (Physical)
-    0x05, 0x09,                    //     USAGE_PAGE (Button)
-    0x19, 0x01,                    //     USAGE_MINIMUM
-    0x29, 0x03,                    //     USAGE_MAXIMUM
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
-    0x95, 0x03,                    //     REPORT_COUNT (3)
-    0x75, 0x01,                    //     REPORT_SIZE (1)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
-    0x95, 0x01,                    //     REPORT_COUNT (1)
-    0x75, 0x05,                    //     REPORT_SIZE (5)
-    0x81, 0x03,                    //     INPUT (Const,Var,Abs)
-    0x05, 0x01,                    //     USAGE_PAGE (Generic Desktop)
+    0xa1, 0x00,                    //   COLLECTION (Physical)
+    0x85, 0x01,                    //     REPORT_ID (1)
+
     0x09, 0x30,                    //     USAGE (X)
     0x09, 0x31,                    //     USAGE (Y)
-    0x09, 0x38,                    //     USAGE (Wheel)
-    0x15, 0x81,                    //     LOGICAL_MINIMUM (-127)
-    0x25, 0x7F,                    //     LOGICAL_MAXIMUM (127)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x25, 0x0F,                    //     LOGICAL_MAXIMUM (15)
+    0x75, 0x01,                    //     REPORT_SIZE (4)
+    0x95, 0x02,                    //     REPORT_COUNT (2)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+
+    0x09, 0x32,                    //     USAGE (Z)
+    0x09, 0x33,                    //     USAGE (Rx)
+    0x09, 0x34,                    //     USAGE (Ry)
+    0x09, 0x35,                    //     USAGE (Rz)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
     0x75, 0x08,                    //     REPORT_SIZE (8)
-    0x95, 0x03,                    //     REPORT_COUNT (3)
-    0x81, 0x06,                    //     INPUT (Data,Var,Rel)
-    0xC0,                          //   END_COLLECTION
-    0xC0,                          // END COLLECTION
+    0x95, 0x04,                    //     REPORT_COUNT (4)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+
+    0x05, 0x09,                    //     USAGE_PAGE (Button)
+    0x19, 0x01,                    //     USAGE_MINIMUM (Button 1)
+    0x29, 0x0B,                    //     USAGE_MAXIMUM (Button 11)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                    //     REPORT_SIZE (1)
+    0x95, 0x0B,                    //     REPORT_COUNT (11)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+    0xc0,                          //     END_COLLECTION
+    0xc0,                          // END_COLLECTION
 };
-/* This is the same report descriptor as seen in a Logitech mouse. The data
- * described by this descriptor consists of 4 bytes:
- *      .  .  .  .  . B2 B1 B0 .... one byte with mouse button states
- *     X7 X6 X5 X4 X3 X2 X1 X0 .... 8 bit signed relative coordinate x
- *     Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0 .... 8 bit signed relative coordinate y
- *     W7 W6 W5 W4 W3 W2 W1 W0 .... 8 bit signed relative coordinate wheel
- */
-typedef struct{
-    uchar   buttonMask;
-    char    dx;
-    char    dy;
-    char    dWheel;
-}report_t;
+
+typedef struct {
+    uchar x : 4;
+    uchar y : 4;
+    uchar z;
+    uchar rx;
+    uchar ry;
+    uchar rz;
+    union {
+        uint16_t value;
+        struct {
+            uchar b1 : 1;
+            uchar b2 : 1;
+            uchar b3 : 1;
+            uchar b4 : 1;
+            uchar b5 : 1;
+            uchar b6 : 1;
+            uchar b7 : 1;
+            uchar b8 : 1;
+            uchar b9 : 1;
+            uchar b10 : 1;
+            uchar b11 : 1;
+            uchar b12 : 1;
+            uchar b13 : 1;
+            uchar b14 : 1;
+            uchar b15 : 1;
+            uchar b16 : 1;
+        } b;
+    } buttons;
+} report_t;
 
 static report_t reportBuffer;
 static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
@@ -179,6 +193,36 @@ static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
 char lastTimer0Value;
 
 /* ------------------------------------------------------------------------- */
+
+static void ps_main(void)
+{
+    ps_read(psdata);
+
+    reportBuffer.x = 8;
+    reportBuffer.y = 8;
+
+    /* ねじり 0x00 - 0x80 - 0xFF */
+    reportBuffer.z = psdata[4];
+
+    /* I Button */
+    reportBuffer.rx = psdata[5];
+
+    /* II Button */
+    reportBuffer.ry = psdata[6];
+
+    /* L Button */
+    reportBuffer.ry = psdata[7];
+
+    reportBuffer.buttons.b.b1 = (psdata[2] & 0x80) ? 0 : 1; /* left */
+    reportBuffer.buttons.b.b2 = (psdata[2] & 0x40) ? 0 : 1; /* down */
+    reportBuffer.buttons.b.b3 = (psdata[2] & 0x20) ? 0 : 1; /* right */
+    reportBuffer.buttons.b.b4 = (psdata[2] & 0x10) ? 0 : 1; /* up */
+    reportBuffer.buttons.b.b5 = (psdata[2] & 0x08) ? 0 : 1; /* start */
+    reportBuffer.buttons.b.b6 = (psdata[3] & 0x20) ? 0 : 1; /* a */
+    reportBuffer.buttons.b.b7 = (psdata[3] & 0x10) ? 0 : 1; /* b */
+    reportBuffer.buttons.b.b8 = (psdata[3] & 0x08) ? 0 : 1; /* r */
+}
+
 
 usbMsgLen_t usbFunctionSetup(uchar data[8])
 {
@@ -239,8 +283,7 @@ int __attribute__((noreturn)) main(void)
         usbPoll();
         if (usbInterruptIsReady()) {
             /* called after every poll of the interrupt endpoint */
-            reportBuffer.dx = ps_main();
-            reportBuffer.dy = 0;
+            ps_main();
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
     }

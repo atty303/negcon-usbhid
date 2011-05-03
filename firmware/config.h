@@ -1,16 +1,4 @@
-/*
-  usbdrv PB1 = D+, PB2 = D-
-  PS PB0 = DAT
-
-  Green - 1 DAT
-  Orange - 2 CMD
-  Black - 3
-  Blue - 4 GND
-  Yellow - 5 3.6V
-  Red - 6 SEL
-  Brown - 7 CLK
-  Gray - 9
- */
+/* -*- c-file-style: "stroustrup"; indent-tabs-mode: nil; -*- */
 
 #ifndef __CONFIG_H_INCLUDED__
 #define __CONFIG_H_INCLUDED__
