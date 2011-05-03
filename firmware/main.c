@@ -16,9 +16,8 @@
 #include "usbdrv.h"
 #include "config.h"
 
-/* ------------------------------------------------------------------------- */
-/* ------------------------------ PS interface ----------------------------- */
-/* ------------------------------------------------------------------------- */
+/* Declarations
+   ================================================================ */
 
 #define PSOUT USB_OUTPORT(PS_CFG_IOPORTNAME)
 #define PSIN USB_INPORT(PS_CFG_IOPORTNAME)
@@ -33,9 +32,82 @@
 #define PS_CMD1() { PSOUT |= _BV(PS_CFG_CMD_BIT); }
 #define PS_CMD0() { PSOUT &= ~(_BV(PS_CFG_CMD_BIT)); }
 
+typedef struct {
+    uchar x : 4;
+    uchar y : 4;
+    uchar z;
+    uchar rx;
+    uchar ry;
+    uchar rz;
+    union {
+        uint16_t value;
+        struct {
+            uchar b1 : 1;
+            uchar b2 : 1;
+            uchar b3 : 1;
+            uchar b4 : 1;
+            uchar b5 : 1;
+            uchar b6 : 1;
+            uchar b7 : 1;
+            uchar b8 : 1;
+            uchar b9 : 1;
+            uchar b10 : 1;
+            uchar b11 : 1;
+            uchar b12 : 1;
+            uchar b13 : 1;
+            uchar b14 : 1;
+            uchar b15 : 1;
+            uchar b16 : 1;
+        } b;
+    } buttons;
+} report_t;
+
+PROGMEM char usbHidReportDescriptor[63] = { /* USB report descriptor, size must match usbconfig.h */
+    0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
+    0x09, 0x04,                    // USAGE (Joystick)
+    0xa1, 0x01,                    // COLLECTION (Application)
+    0x09, 0x01,                    //   USAGE (Pointer)
+    0xa1, 0x00,                    //   COLLECTION (Physical)
+    0x85, 0x01,                    //     REPORT_ID (1)
+
+    0x09, 0x30,                    //     USAGE (X)
+    0x09, 0x31,                    //     USAGE (Y)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x25, 0x0F,                    //     LOGICAL_MAXIMUM (15)
+    0x75, 0x01,                    //     REPORT_SIZE (4)
+    0x95, 0x02,                    //     REPORT_COUNT (2)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+
+    0x09, 0x32,                    //     USAGE (Z)
+    0x09, 0x33,                    //     USAGE (Rx)
+    0x09, 0x34,                    //     USAGE (Ry)
+    0x09, 0x35,                    //     USAGE (Rz)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
+    0x75, 0x08,                    //     REPORT_SIZE (8)
+    0x95, 0x04,                    //     REPORT_COUNT (4)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+
+    0x05, 0x09,                    //     USAGE_PAGE (Button)
+    0x19, 0x01,                    //     USAGE_MINIMUM (Button 1)
+    0x29, 0x0B,                    //     USAGE_MAXIMUM (Button 11)
+    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                    //     REPORT_SIZE (1)
+    0x95, 0x0B,                    //     REPORT_COUNT (11)
+    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+    0xc0,                          //     END_COLLECTION
+    0xc0,                          // END_COLLECTION
+};
+
+char lastTimer0Value;           /* required by osctune.h */
 
 static uchar psdata[34];
+static report_t reportBuffer;
+static uchar idleRate; /* repeat rate for keyboards, never used for mice */
 
+/* 
+   ================================================================ */
 
 static void ps_init(void)
 {
@@ -113,87 +185,6 @@ static void ps_read(uchar *output)
     PS_SEL1();
 }
 
-/* ------------------------------------------------------------------------- */
-/* ----------------------------- USB interface ----------------------------- */
-/* ------------------------------------------------------------------------- */
-
-
-PROGMEM char usbHidReportDescriptor[63] = { /* USB report descriptor, size must match usbconfig.h */
-    0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
-    0x09, 0x04,                    // USAGE (Joystick)
-    0xa1, 0x01,                    // COLLECTION (Application)
-    0x09, 0x01,                    //   USAGE (Pointer)
-    0xa1, 0x00,                    //   COLLECTION (Physical)
-    0x85, 0x01,                    //     REPORT_ID (1)
-
-    0x09, 0x30,                    //     USAGE (X)
-    0x09, 0x31,                    //     USAGE (Y)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x25, 0x0F,                    //     LOGICAL_MAXIMUM (15)
-    0x75, 0x01,                    //     REPORT_SIZE (4)
-    0x95, 0x02,                    //     REPORT_COUNT (2)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
-
-    0x09, 0x32,                    //     USAGE (Z)
-    0x09, 0x33,                    //     USAGE (Rx)
-    0x09, 0x34,                    //     USAGE (Ry)
-    0x09, 0x35,                    //     USAGE (Rz)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
-    0x75, 0x08,                    //     REPORT_SIZE (8)
-    0x95, 0x04,                    //     REPORT_COUNT (4)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
-
-    0x05, 0x09,                    //     USAGE_PAGE (Button)
-    0x19, 0x01,                    //     USAGE_MINIMUM (Button 1)
-    0x29, 0x0B,                    //     USAGE_MAXIMUM (Button 11)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
-    0x75, 0x01,                    //     REPORT_SIZE (1)
-    0x95, 0x0B,                    //     REPORT_COUNT (11)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
-    0xc0,                          //     END_COLLECTION
-    0xc0,                          // END_COLLECTION
-};
-
-typedef struct {
-    uchar x : 4;
-    uchar y : 4;
-    uchar z;
-    uchar rx;
-    uchar ry;
-    uchar rz;
-    union {
-        uint16_t value;
-        struct {
-            uchar b1 : 1;
-            uchar b2 : 1;
-            uchar b3 : 1;
-            uchar b4 : 1;
-            uchar b5 : 1;
-            uchar b6 : 1;
-            uchar b7 : 1;
-            uchar b8 : 1;
-            uchar b9 : 1;
-            uchar b10 : 1;
-            uchar b11 : 1;
-            uchar b12 : 1;
-            uchar b13 : 1;
-            uchar b14 : 1;
-            uchar b15 : 1;
-            uchar b16 : 1;
-        } b;
-    } buttons;
-} report_t;
-
-static report_t reportBuffer;
-static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
-
-/* required by osctune.h */
-char lastTimer0Value;
-
-/* ------------------------------------------------------------------------- */
-
 static void ps_main(void)
 {
     ps_read(psdata);
@@ -223,26 +214,25 @@ static void ps_main(void)
     reportBuffer.buttons.b.b8 = (psdata[3] & 0x08) ? 0 : 1; /* r */
 }
 
-
 usbMsgLen_t usbFunctionSetup(uchar data[8])
 {
-usbRequest_t    *rq = (void *)data;
+    usbRequest_t *rq = (void *)data;
 
     /* The following requests are never used. But since they are required by
      * the specification, we implement them in this example.
      */
-    if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS){    /* class request type */
-        if(rq->bRequest == USBRQ_HID_GET_REPORT){  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
+    if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS) {    /* class request type */
+        if (rq->bRequest == USBRQ_HID_GET_REPORT) {  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
             /* we only have one report type, so don't look at wValue */
             usbMsgPtr = (void *)&reportBuffer;
             return sizeof(reportBuffer);
-        }else if(rq->bRequest == USBRQ_HID_GET_IDLE){
+        } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
             usbMsgPtr = &idleRate;
             return 1;
-        }else if(rq->bRequest == USBRQ_HID_SET_IDLE){
+        } else if (rq->bRequest == USBRQ_HID_SET_IDLE) {
             idleRate = rq->wValue.bytes[1];
         }
-    }else{
+    } else {
         if (rq->bRequest == 0x01) {
             usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
             if (len > rq->wLength.word)
@@ -250,12 +240,10 @@ usbRequest_t    *rq = (void *)data;
             usbMsgPtr = psdata;
             return len;
         }
-        /* no vendor specific requests implemented */
     }
     return 0;   /* default for not implemented requests: return no data back to host */
 }
 
-/* ------------------------------------------------------------------------- */
 static void usb_reenumerate(void)
 {
     uchar i = 0;
@@ -270,9 +258,7 @@ static void usb_reenumerate(void)
 int __attribute__((noreturn)) main(void)
 {
     wdt_enable(WDTO_1S);
-
-    /* required by osctune.h */
-    TCCR0B = 3;
+    TCCR0B = 3;                 /* required by osctune.h */
     usbInit();
     ps_init();
     usb_reenumerate();
