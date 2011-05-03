@@ -48,7 +48,7 @@ static void ps_init(void)
 
 /* コントローラへコマンドを送り、
    コントローラからの返答を返す */
-static uchar ps_putgetc(uchar cmd)
+static uchar ps_sendrecv(uchar cmd)
 {
     uchar i = 8;
     uchar data = 0;
@@ -57,50 +57,56 @@ static uchar ps_putgetc(uchar cmd)
 	PS_CLK0();
 	if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
 	cmd >>= 1;
-	_delay_us(15);
+	_delay_us(PS_CFG_CLK_DELAY_US);
 	PS_CLK1();
 	data >>= 1;
 	data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
-	_delay_us(15);
+	_delay_us(PS_CFG_CLK_DELAY_US);
     }
 
     /* ACK待ち */
-    _delay_us(20);
+    _delay_us(PS_CFG_ACK_DELAY_US);
 
     return data;
 }
 
-/* 
-   outputは33バイト以上必要
+/*
+  @param[in]  output  デバイスから受信したデータを保存するバッファへのポインタ
+  @note outputバッファは34バイト無いとバッファオーバーフローの可能性がある。
+        受信データは(固定の2バイト + 可変の2〜32バイト)であるため。
  */
 static void ps_read(uchar *output)
 {
+    /* 4バイト目以降のデータ転送ワード数(1ワード=2バイト)。デバイスからのレスポンスにより決まる。 */
     uchar data_len;
 
+    /* SELを立ち下げてデバイスとの通信を開始する。 */
+    /* その後の最初のCLK立ち下げまでに長めのウェイトを入れないと通信開始に失敗する。 */
     PS_SEL0();
-    _delay_us(17);
+    _delay_us(PS_CFG_SEL_DELAY_US);
 
     /* 1バイト目: CMD=0x01, DAT=不定 */
-    ps_putgetc(0x01);
+    ps_sendrecv(0x01);
 
     /* 2バイト目: CMD=0x42, DAT=上位4ビット:デバイスタイプ 下位4ビット:data_len */
-    *output = ps_putgetc(0x42);
-    /* 4バイト目以降のデータ転送バイト数 / 2 */
+    *output = ps_sendrecv(0x42);
+
     data_len = (*output++ & 0x0f);
-#if 0				/* この条件に入るデバイスは無いと思うので省略 */
-    if (!data_len) {
+    /* data_len == 0 は 0x10 として扱う */
+    if (data_len == 0) {
 	data_len = 0x10;
     }
-#endif
 
     /* 3バイト目: CMD=0x00, DAT=0x5A */
-    *output++ = ps_putgetc(0x00);
+    *output++ = ps_sendrecv(0x00);
 
+    /* 4バイト目以降 */
     while (data_len--) {
-	*output++ = ps_putgetc(0x00);
-	*output++ = ps_putgetc(0x00);
+	*output++ = ps_sendrecv(0x00);
+	*output++ = ps_sendrecv(0x00);
     }
 
+    /* SELを立ち上げてデバイスとの通信を終了する。 */
     PS_SEL1();
 }
 
@@ -168,6 +174,7 @@ typedef struct{
 static report_t reportBuffer;
 static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
 
+/* required by osctune.h */
 char lastTimer0Value;
 
 /* ------------------------------------------------------------------------- */
@@ -193,14 +200,10 @@ usbRequest_t    *rq = (void *)data;
         }
     }else{
 	if (rq->bRequest == 0x01) {
-	    usbMsgLen_t len = 16;
+	    usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
 	    if (len > rq->wLength.word)
 		len = rq->wLength.word;
 	    usbMsgPtr = psdata;
-	    psdata[12] = 0xDE;
-	    psdata[13] = 0xAD;
-	    psdata[14] = 0xBE;
-	    psdata[15] = 0xEF;
 	    return len;
 	}
         /* no vendor specific requests implemented */
@@ -223,8 +226,8 @@ static void usb_reenumerate(void)
 
 int __attribute__((noreturn)) main(void)
 {
+    /* required by osctune.h */
     TCCR0B = 3;
-    /* OSCCAL = 220; */
 
     wdt_enable(WDTO_1S);
     /* Even if you don't use the watchdog, turn it off here. On newer devices,
