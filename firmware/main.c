@@ -34,89 +34,12 @@
 #define PS_CMD1() { PSOUT |= _BV(PS_CFG_CMD_BIT); }
 #define PS_CMD0() { PSOUT &= ~(_BV(PS_CFG_CMD_BIT)); }
 
-/* ATtiny45 = TCNT1 */
-#define PS_TCNT TCNT2
-/* ATtiny45 = TCCR1 */
-#define PS_TCCR TCCR2B
-/* ATtiny45 = (_BV(3)|_BV(2)|_BV(1)|_BV(0)) */
-#define PS_TCCR_MASK (_BV(2)|_BV(1)|_BV(0))
-#define PS_TCCR_CS_CK1 (0) /* Clock Select: 分周なし */
-#define PS_TCCR_CS_CK8 (_BV(0)) /* Clock Select: 1/8分周 */
-#define PS_TIMER_OVF_VECT TIMER2_OVF_vect
-
-/* PSパッドのCLKの間隔(250KHz/4usec)をタイマーのカウント値へ算出する。
-   実際のクロックは諸々のオーバーヘッドにより250KHzより遅くなるが、
-   PSパッド動作に支障は無いはずである。
- */
-#define PS_TIMER_CLK_HZ (250L * 1000)
-#define PS_TIMER_CLK_PRESCALING 1
-#define PS_TIMER_CLK_TICK ((F_CPU / PS_TIMER_CLK_PRESCALING) / PS_TIMER_CLK_HZ)
-#if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
-#  define PS_TIMER_CLK_TCCR PS_TCCR_CS_CK1
-#else
-#  error "invalid timer configuration"
-#endif
-/* CLKの間隔を待つタイマーを開始する際に設定するカウント値を算出する。
-   タイマーのオーバーフロー割り込みによりクロックを検出するので、
-   オーバーフロー直前の値からクロック間隔を減算した値となる。
- */
-#define PS_TIMER_CLK_TCNT (uchar)(0xff - PS_TIMER_CLK_TICK)
-
-/* PSパッドへのデータ転送完了からACKが返るまでのタイマーカウント値を算出する。
-   PS本体はパッドから10KHz/100usec以内に応答がなければ未接続と認識するので、
-   逆説的に常に100usec待てば次のデータ転送が可能となるはずである。
-   よって、ACKを確認せずにPSパッドとコミュニケーションする。
- */
-#define PS_TIMER_ACK_HZ (10L * 1000)
-#define PS_TIMER_ACK_PRESCALING 1
-#define PS_TIMER_ACK_TICK ((F_CPU / PS_TIMER_ACK_PRESCALING) / PS_TIMER_ACK_HZ)
-#if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
-#  define PS_TIMER_ACK_TCCR PS_TCCR_CS_CK1
-#else
-#  undef PS_TIMER_ACK_PRESCALING
-#  undef PS_TIMER_ACK_TICK
-#  define PS_TIMER_ACK_PRESCALING 8
-#  define PS_TIMER_ACK_TICK ((F_CPU / PS_TIMER_ACK_PRESCALING) / PS_TIMER_ACK_HZ)
-#  if PS_TIMER_ACK_TICK >= 0x00 && PS_TIMER_ACK_TICK <= 0xff
-#    define PS_TIMER_ACK_TCCR PS_TCCR_CS_CK8
-#  else
-#    error "invalid ack timer configuration"
-#  endif
-#endif
-#define PS_TIMER_ACK_TCNT (uchar)(0xff - PS_TIMER_ACK_TICK)
-
-
-volatile static char wait_flag = 0;  /* wait_clkで使われる */
-
-static void ps_timer_start(uchar tccr, uchar tcnt)
-{
-    wait_flag = 0;
-    PS_TCCR = (PS_TCCR & ~(PS_TCCR_MASK)) | tccr;
-    PS_TCNT = tcnt;
-}
-
-ISR(PS_TIMER_OVF_VECT)
-{
-    wait_flag = !0;
-    PS_TCCR &= ~(PS_TCCR_MASK);
-}
-
-static void ps_timer_wait(void)
-{
-    for (;;) {
-	if (wait_flag) break;
-    }
-}
-
 static void ps_init(void)
 {
     /* SEL,CLK,CMDを出力に、DATを入力に設定する */
     PSDDR = (PSDDR & ~(PS_PORT_MASK)) | (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT));
     /* DAT入力をプルアップする */
     PSOUT |= _BV(PS_CFG_DAT_BIT);
-
-    /* FIXME: タイマー割り込みを有効にする */
-    /* TIMSK2 |= TOIE2; */
 
     PS_SEL1();
     PS_CLK1();
@@ -127,51 +50,10 @@ static void ps_init(void)
    コントローラからの返答を返す */
 static uchar ps_putgetc(uchar cmd)
 {
-    /* uchar i = 16; */
     uchar i = 8;
     uchar data = 0;
 
-//    PS_CLK1();
-//    PS_CMD1();
-//    _delay_us(1);
-
     while (i--) {
-#if 0
-//	ps_timer_start(PS_TIMER_CLK_TCCR, PS_TIMER_CLK_TCNT);
-	if (i & 1) {
-	    /* PSOUT = (PSOUT & ~(_BV(PS_CFG_CMD_BIT))) | (cmd & 1); */
-	    if (cmd & 1) {
-		PS_CMD1();
-	    } else {
-		PS_CMD0();
-	    }
-	    cmd >>= 1;
-	    PS_CLK0();
-	} else {
-	    PS_CLK1();
-	    data >>= 1;
-	    data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
-	}
-//	ps_timer_wait();
-	_delay_us(8);
-#else
-/*
-	    if (cmd & 1) {
-		PS_CMD1();
-	    } else {
-		PS_CMD0();
-	    }
-	    cmd >>= 1;
-	    _delay_us(2);
-	    PS_CLK0();
-	    _delay_us(2);
-
-	    PS_CLK1();
-	    _delay_us(2);
-	    data >>= 1;
-	    data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
-	    _delay_us(2);
-*/
 	PS_CLK0();
 	if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
 	cmd >>= 1;
@@ -180,14 +62,9 @@ static uchar ps_putgetc(uchar cmd)
 	data >>= 1;
 	data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
 	_delay_us(15);
-#endif
     }
 
-//    PS_CMD1();
-
     /* ACK待ち */
-//    ps_timer_start(PS_TIMER_ACK_TCCR, PS_TIMER_ACK_TCNT);
-//    ps_timer_wait();
     _delay_us(20);
 
     return data;
@@ -293,26 +170,9 @@ typedef struct{
 }report_t;
 
 static report_t reportBuffer;
-static int      sinus = 7 << 6, cosinus = 0;
 static uchar    idleRate;   /* repeat rate for keyboards, never used for mice */
 
 char lastTimer0Value;
-
-/* The following function advances sin/cos by a fixed angle
- * and stores the difference to the previous coordinates in the report
- * descriptor.
- * The algorithm is the simulation of a second order differential equation.
- */
-static void advanceCircleByFixedAngle(void)
-{
-char    d;
-
-#define DIVIDE_BY_64(val)  (val + (val > 0 ? 32 : -32)) >> 6    /* rounding divide */
-    reportBuffer.dx = d = DIVIDE_BY_64(cosinus);
-    sinus += d;
-    reportBuffer.dy = d = DIVIDE_BY_64(sinus);
-    cosinus -= d;
-}
 
 /* ------------------------------------------------------------------------- */
 
@@ -393,7 +253,6 @@ int __attribute__((noreturn)) main(void)
             /* called after every poll of the interrupt endpoint */
 	    reportBuffer.dx = ps_main();
 	    reportBuffer.dy = 0;
-            /* advanceCircleByFixedAngle(); */
             DBG1(0x03, 0, 0);   /* debug output: interrupt report prepared */
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
