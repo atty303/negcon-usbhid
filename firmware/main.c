@@ -1,10 +1,8 @@
 /* -*- c-file-style: "stroustrup"; indent-tabs-mode: nil; -*- */
 /* Name: main.c
- * Author: <insert your name here>
- * Copyright: <insert your copyright message here>
- * License: <insert your license reference here>
- *
- * http://blog.livedoor.jp/ikehiro/archives/456433.html
+ * Author: AGAWA Koji <atty303@gmail.com>
+ * Copyright: AGAWA Koji
+ * License: GPLv2
  */
 
 #include <avr/io.h>
@@ -19,18 +17,10 @@
 /* Declarations
    ================================================================ */
 
-#define PSOUT USB_OUTPORT(PS_CFG_IOPORTNAME)
-#define PSIN USB_INPORT(PS_CFG_IOPORTNAME)
-#define PSDDR USB_DDRPORT(PS_CFG_IOPORTNAME)
-
+#define PS_OUT USB_OUTPORT(PS_CFG_IOPORTNAME) /* PORTx register for PS IF */
+#define PS_IN  USB_INPORT(PS_CFG_IOPORTNAME)  /* PINx register for PS IF */
+#define PS_DDR USB_DDRPORT(PS_CFG_IOPORTNAME) /* DDRx register for PS IF */
 #define PS_PORT_MASK (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT) | _BV(PS_CFG_DAT_BIT))
-
-#define PS_SEL1() { PSOUT |= _BV(PS_CFG_SEL_BIT); }
-#define PS_SEL0() { PSOUT &= ~(_BV(PS_CFG_SEL_BIT)); }
-#define PS_CLK1() { PSOUT |= _BV(PS_CFG_CLK_BIT); }
-#define PS_CLK0() { PSOUT &= ~(_BV(PS_CFG_CLK_BIT)); }
-#define PS_CMD1() { PSOUT |= _BV(PS_CFG_CMD_BIT); }
-#define PS_CMD0() { PSOUT &= ~(_BV(PS_CFG_CMD_BIT)); }
 
 typedef struct {
     uchar x : 4;
@@ -62,42 +52,43 @@ typedef struct {
     } buttons;
 } report_t;
 
-PROGMEM char usbHidReportDescriptor[63] = { /* USB report descriptor, size must match usbconfig.h */
-    0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
-    0x09, 0x04,                    // USAGE (Joystick)
-    0xa1, 0x01,                    // COLLECTION (Application)
-    0x09, 0x01,                    //   USAGE (Pointer)
-    0xa1, 0x00,                    //   COLLECTION (Physical)
-    0x85, 0x01,                    //     REPORT_ID (1)
+/* USB report descriptor, size must match usbconfig.h */
+PROGMEM char usbHidReportDescriptor[63] = {
+    0x05, 0x01,                 // USAGE_PAGE (Generic Desktop)
+    0x09, 0x04,                 // USAGE (Joystick)
+    0xa1, 0x01,                 // COLLECTION (Application)
+    0x09, 0x01,                 //   USAGE (Pointer)
+    0xa1, 0x00,                 //   COLLECTION (Physical)
+    0x85, 0x01,                 //     REPORT_ID (1)
 
-    0x09, 0x30,                    //     USAGE (X)
-    0x09, 0x31,                    //     USAGE (Y)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x25, 0x0F,                    //     LOGICAL_MAXIMUM (15)
-    0x75, 0x01,                    //     REPORT_SIZE (4)
-    0x95, 0x02,                    //     REPORT_COUNT (2)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+    0x09, 0x30,                 //     USAGE (X)
+    0x09, 0x31,                 //     USAGE (Y)
+    0x15, 0x00,                 //     LOGICAL_MINIMUM (0)
+    0x25, 0x0F,                 //     LOGICAL_MAXIMUM (15)
+    0x75, 0x01,                 //     REPORT_SIZE (4)
+    0x95, 0x02,                 //     REPORT_COUNT (2)
+    0x81, 0x02,                 //     INPUT (Data,Var,Abs)
 
-    0x09, 0x32,                    //     USAGE (Z)
-    0x09, 0x33,                    //     USAGE (Rx)
-    0x09, 0x34,                    //     USAGE (Ry)
-    0x09, 0x35,                    //     USAGE (Rz)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
-    0x75, 0x08,                    //     REPORT_SIZE (8)
-    0x95, 0x04,                    //     REPORT_COUNT (4)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+    0x09, 0x32,                 //     USAGE (Z)
+    0x09, 0x33,                 //     USAGE (Rx)
+    0x09, 0x34,                 //     USAGE (Ry)
+    0x09, 0x35,                 //     USAGE (Rz)
+    0x15, 0x00,                 //     LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,           //     LOGICAL_MAXIMUM (255)
+    0x75, 0x08,                 //     REPORT_SIZE (8)
+    0x95, 0x04,                 //     REPORT_COUNT (4)
+    0x81, 0x02,                 //     INPUT (Data,Var,Abs)
 
-    0x05, 0x09,                    //     USAGE_PAGE (Button)
-    0x19, 0x01,                    //     USAGE_MINIMUM (Button 1)
-    0x29, 0x0B,                    //     USAGE_MAXIMUM (Button 11)
-    0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
-    0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
-    0x75, 0x01,                    //     REPORT_SIZE (1)
-    0x95, 0x0B,                    //     REPORT_COUNT (11)
-    0x81, 0x02,                    //     INPUT (Data,Var,Abs)
-    0xc0,                          //     END_COLLECTION
-    0xc0,                          // END_COLLECTION
+    0x05, 0x09,                 //     USAGE_PAGE (Button)
+    0x19, 0x01,                 //     USAGE_MINIMUM (Button 1)
+    0x29, 0x0B,                 //     USAGE_MAXIMUM (Button 11)
+    0x15, 0x00,                 //     LOGICAL_MINIMUM (0)
+    0x25, 0x01,                 //     LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                 //     REPORT_SIZE (1)
+    0x95, 0x0B,                 //     REPORT_COUNT (11)
+    0x81, 0x02,                 //     INPUT (Data,Var,Abs)
+    0xc0,                       //   END_COLLECTION
+    0xc0,                       // END_COLLECTION
 };
 
 char lastTimer0Value;           /* required by osctune.h */
@@ -112,34 +103,41 @@ static uchar idleRate; /* repeat rate for keyboards, never used for mice */
 static void ps_init(void)
 {
     /* SEL,CLK,CMDを出力に、DATを入力に設定する */
-    PSDDR = (PSDDR & ~(PS_PORT_MASK)) | (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT));
-    /* DAT入力をプルアップする */
-    PSOUT |= _BV(PS_CFG_DAT_BIT);
-
-    PS_SEL1();
-    PS_CLK1();
-    PS_CMD1();
+    PS_DDR = (PS_DDR & ~(PS_PORT_MASK)) | (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT));
+    /* DAT入力をプルアップし、SEL,CLK,CMDは初期状態で全てH出力とする */
+    PS_OUT |= PS_PORT_MASK;
 }
 
-/* コントローラへコマンドを送り、
-   コントローラからの返答を返す */
+/* デバイスを1バイトのコマンドを送信し、受信した応答を返す。
+   @param[in]  cmd  デバイスに送信するコマンドバイト
+   @return          デバイスから受信したデータ
+ */
 static uchar ps_sendrecv(uchar cmd)
 {
     uchar i = 8;
     uchar data = 0;
 
     while (i--) {
-        PS_CLK0();
-        if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
+        /* CLKを立ち下げ */
+        PS_OUT &= ~(_BV(PS_CFG_CLK_BIT));
+        /* CMDビットを出力 */
+        if (cmd & 1) {
+            PS_OUT |= _BV(PS_CFG_CMD_BIT);
+        } else {
+            PS_OUT &= ~(_BV(PS_CFG_CMD_BIT));
+        }
         cmd >>= 1;
         _delay_us(PS_CFG_CLK_DELAY_US);
-        PS_CLK1();
+
+        /* CLKを立ち上げ */
+        PS_OUT |= _BV(PS_CFG_CLK_BIT);
         data >>= 1;
-        data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
+        /* DATを読み取り */
+        data |= (PS_IN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
         _delay_us(PS_CFG_CLK_DELAY_US);
     }
 
-    /* ACK待ち */
+    /* ACKが来るであろう時間まで待つ。ACKそのものの確認はしない。 */
     _delay_us(PS_CFG_ACK_DELAY_US);
 
     return data;
@@ -157,7 +155,7 @@ static void ps_read(uchar *output)
 
     /* SELを立ち下げてデバイスとの通信を開始する。 */
     /* その後の最初のCLK立ち下げまでに長めのウェイトを入れないと通信開始に失敗する。 */
-    PS_SEL0();
+    PS_OUT &= ~(_BV(PS_CFG_SEL_BIT));
     _delay_us(PS_CFG_SEL_DELAY_US);
 
     /* 1バイト目: CMD=0x01, DAT=不定 */
@@ -182,7 +180,7 @@ static void ps_read(uchar *output)
     }
 
     /* SELを立ち上げてデバイスとの通信を終了する。 */
-    PS_SEL1();
+    PS_OUT |= _BV(PS_CFG_SEL_BIT);
 }
 
 static void ps_main(void)
