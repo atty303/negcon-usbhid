@@ -77,8 +77,6 @@ static void ps_read(uchar *output)
 {
     uchar data_len;
 
-      PS_CMD1();
-      PS_CLK1();
     PS_SEL0();
     _delay_us(17);
 
@@ -103,8 +101,6 @@ static void ps_read(uchar *output)
 	*output++ = ps_putgetc(0x00);
     }
 
-      PS_CMD1();
-      _delay_ms(1);
     PS_SEL1();
 }
 
