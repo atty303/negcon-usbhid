@@ -14,7 +14,6 @@
 #include <util/delay.h>
 
 #include "usbdrv.h"
-#include "oddebug.h"        /* This is also an example for using debug macros */
 #include "config.h"
 
 /* ------------------------------------------------------------------------- */
@@ -33,6 +32,10 @@
 #define PS_CLK0() { PSOUT &= ~(_BV(PS_CFG_CLK_BIT)); }
 #define PS_CMD1() { PSOUT |= _BV(PS_CFG_CMD_BIT); }
 #define PS_CMD0() { PSOUT &= ~(_BV(PS_CFG_CMD_BIT)); }
+
+
+static uchar psdata[34];
+
 
 static void ps_init(void)
 {
@@ -110,8 +113,6 @@ static void ps_read(uchar *output)
     PS_SEL1();
 }
 
-static uchar psdata[33];
-
 static int ps_main(void)
 {
     ps_read(psdata);
@@ -187,7 +188,6 @@ usbRequest_t    *rq = (void *)data;
      * the specification, we implement them in this example.
      */
     if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS){    /* class request type */
-        DBG1(0x50, &rq->bRequest, 1);   /* debug output: print our request */
         if(rq->bRequest == USBRQ_HID_GET_REPORT){  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
             /* we only have one report type, so don't look at wValue */
             usbMsgPtr = (void *)&reportBuffer;
@@ -214,10 +214,9 @@ usbRequest_t    *rq = (void *)data;
 /* ------------------------------------------------------------------------- */
 static void usb_reenumerate(void)
 {
-    uchar   i;
+    uchar i = 0;
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
-    i = 0;
-    while(--i){             /* fake USB disconnect for > 250 ms */
+    while (--i) {	    /* fake USB disconnect for > 250 ms */
         wdt_reset();
         _delay_ms(1);
     }
@@ -226,33 +225,22 @@ static void usb_reenumerate(void)
 
 int __attribute__((noreturn)) main(void)
 {
+    wdt_enable(WDTO_1S);
+
     /* required by osctune.h */
     TCCR0B = 3;
-
-    wdt_enable(WDTO_1S);
-    /* Even if you don't use the watchdog, turn it off here. On newer devices,
-     * the status of the watchdog (on/off, period) is PRESERVED OVER RESET!
-     */
-    /* RESET status: all port bits are inputs without pull-up.
-     * That's the way we need D+ and D-. Therefore we don't need any
-     * additional hardware initialization.
-     */
-    odDebugInit();
-    DBG1(0x00, 0, 0);       /* debug output: main starts */
     usbInit();
     ps_init();
     usb_reenumerate();
     sei();
-    DBG1(0x01, 0, 0);       /* debug output: main loop starts */
-    for(;;){                /* main event loop */
-        DBG1(0x02, 0, 0);   /* debug output: main loop iterates */
+
+    for (;;) {                /* main event loop */
         wdt_reset();
         usbPoll();
-        if(usbInterruptIsReady()){
+        if (usbInterruptIsReady()) {
             /* called after every poll of the interrupt endpoint */
 	    reportBuffer.dx = ps_main();
 	    reportBuffer.dy = 0;
-            DBG1(0x03, 0, 0);   /* debug output: interrupt report prepared */
             usbSetInterrupt((void *)&reportBuffer, sizeof(reportBuffer));
         }
     }
