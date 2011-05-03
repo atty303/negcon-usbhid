@@ -175,11 +175,11 @@ static uchar ps_putgetc(uchar cmd)
 	PS_CLK0();
 	if (cmd & 1) { PS_CMD1(); } else { PS_CMD0(); }
 	cmd >>= 1;
-	_delay_us(10);
+	_delay_us(15);
 	PS_CLK1();
 	data >>= 1;
 	data |= (PSIN & _BV(PS_CFG_DAT_BIT)) ? 0x80 : 0x00;
-	_delay_us(10);
+	_delay_us(15);
 #endif
     }
 
