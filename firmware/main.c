@@ -203,6 +203,7 @@ static void ps_read(uchar *output)
       PS_CMD1();
       PS_CLK1();
     PS_SEL0();
+    _delay_us(17);
 
     /* 1バイト目: CMD=0x01, DAT=不定 */
     ps_putgetc(0x01);
