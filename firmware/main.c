@@ -236,10 +236,10 @@ static int ps_main(void)
 {
     ps_read(psdata);
     if (!(psdata[2] & 0x80)) {
-	return -10;
+	return -1;
     }
     if (!(psdata[2] & 0x20)) {
-	return 10;
+	return 1;
     }
     return 0;
 }
