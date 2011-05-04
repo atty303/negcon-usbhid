@@ -81,7 +81,7 @@ PROGMEM char usbHidReportDescriptor[40] = {
     G_LOGICAL_MINIMUM(1), 0x00,
     G_LOGICAL_MAXIMUM(2), 0xFF, 0x00,
     G_REPORT_SIZE(1), 0x08,
-    G_REPORT_COUNT(1), 0x08,
+    G_REPORT_COUNT(1), 0x80,
     L_USAGE(2), 0x00, 0x00,    /* Undefined */
     M_FEATURE(1), IOF_VARIABLE,
 
