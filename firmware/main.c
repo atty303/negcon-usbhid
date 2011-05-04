@@ -5,8 +5,9 @@
  * License: GPLv2
  */
 
-#include <avr/io.h>
+#include <avr/eeprom.h>
 #include <avr/interrupt.h>
+#include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <avr/wdt.h>
 #include <util/delay.h>
@@ -21,6 +22,62 @@
 #define PS_IN  USB_INPORT(PS_CFG_IOPORTNAME)  /* PINx register for PS IF */
 #define PS_DDR USB_DDRPORT(PS_CFG_IOPORTNAME) /* DDRx register for PS IF */
 #define PS_PORT_MASK (_BV(PS_CFG_SEL_BIT) | _BV(PS_CFG_CLK_BIT) | _BV(PS_CFG_CMD_BIT) | _BV(PS_CFG_DAT_BIT))
+
+typedef struct calibrate_t {
+    uchar lower_threshold;
+    uchar higher_threshold;
+} calibrate_t;
+
+typedef struct config_t {
+    /*
+       0 0 0 0 B B B B
+               \     /
+                ------ map to button
+
+       A A A A x x D D -- direction 0: 0x00 -> 0xFF, 1: 0x80 -> 0xFF, 2: 0xFF -> 0x00 3: .0x80 -> 0x00
+       \     /
+        ------ map to axis
+               0: (reserved), 1: x, 2: y, 3: z, 4: rx, 5: ry, 6: rz, 7: N/A, 15: (reserved)
+
+       1 1 1 1 1 1 1 1
+     */
+    struct {
+        /* 物理的にデジタルボタン */
+        uchar start;
+        uchar a;
+        uchar b;
+        uchar r;
+        /* 十字キー */
+        uchar left;
+        uchar down;
+        uchar right;
+        uchar up;
+        /* アナログボタン 0x00..0xFF */
+        uchar i;
+        uchar ii;
+        uchar l;
+        /* ねじり 0x00..0x80..0xFF */
+        uchar negi_neg;         /* 0x80 -> 0x00 */
+        uchar negi_pos;         /* 0x80 -> 0xFF */
+    } mapping;                  /* 12 bytes */
+
+    struct {
+        calibrate_t i;
+        calibrate_t ii;
+        calibrate_t l;
+        calibrate_t negi_neg;
+        calibrate_t negi_pos;
+        uchar negi_center;
+    } calibration;              /* 11 bytes */
+
+    struct {
+        uchar i : 2;
+        uchar ii : 2;
+        uchar l : 2;
+        uchar negi_neg : 2;
+        uchar negi_pos : 2;
+    } curve;                    /* 2 bytes */
+} config_t;                     /* 25 bytes */
 
 typedef struct {
     uchar x : 4;
@@ -91,13 +148,57 @@ PROGMEM char usbHidReportDescriptor[63] = {
     0xc0,                       // END_COLLECTION
 };
 
+EEMEM static config_t config_eeprom;
+static config_t config_sram;
+
 char lastTimer0Value;           /* required by osctune.h */
 
 static uchar psdata[34];
 static report_t reportBuffer;
 static uchar idleRate; /* repeat rate for keyboards, never used for mice */
 
-/* 
+/* config
+   ================================================================ */
+static void config_init(void)
+{
+    eeprom_read_block(&config_sram, &config_eeprom, sizeof(config_eeprom));
+}
+
+static void config_update(void)
+{
+    eeprom_update_block(&config_sram, &config_eeprom, sizeof(config_eeprom));
+}
+
+static inline uchar is_map_to_button(uchar m)
+{
+    return !(m & 0xF0);
+}
+static inline uchar map_button(uchar m)
+{
+    return m & 0x0F;
+}
+static inline uchar is_map_to_none(uchar m)
+{
+    return (m & 0xFF) == 0xFF;
+}
+
+static void handle_digital_button(uchar statebit, uchar *mapping)
+{
+    if (is_map_to_button(*mapping)) {
+        if (!statebit) {
+            /* デジタルボタンが押下されている */
+            reportBuffer.buttons.value |= _BV(map_button(*mapping));
+        } else {
+            reportBuffer.buttons.value &= ~_BV(map_button(*mapping));
+        }
+    }
+}
+static void handle_linear_analog(uchar state, uchar *mapping, calibrate_t *calib)
+{
+    
+}
+
+/* PS device
    ================================================================ */
 
 static void ps_init(void)
@@ -202,14 +303,14 @@ static void ps_main(void)
     /* L Button */
     reportBuffer.ry = psdata[7];
 
-    reportBuffer.buttons.b.b1 = (psdata[2] & 0x80) ? 0 : 1; /* left */
-    reportBuffer.buttons.b.b2 = (psdata[2] & 0x40) ? 0 : 1; /* down */
-    reportBuffer.buttons.b.b3 = (psdata[2] & 0x20) ? 0 : 1; /* right */
-    reportBuffer.buttons.b.b4 = (psdata[2] & 0x10) ? 0 : 1; /* up */
-    reportBuffer.buttons.b.b5 = (psdata[2] & 0x08) ? 0 : 1; /* start */
-    reportBuffer.buttons.b.b6 = (psdata[3] & 0x20) ? 0 : 1; /* a */
-    reportBuffer.buttons.b.b7 = (psdata[3] & 0x10) ? 0 : 1; /* b */
-    reportBuffer.buttons.b.b8 = (psdata[3] & 0x08) ? 0 : 1; /* r */
+    handle_digital_button(psdata[2] & 0x80, &config_sram.mapping.left);
+    handle_digital_button(psdata[2] & 0x40, &config_sram.mapping.down);
+    handle_digital_button(psdata[2] & 0x20, &config_sram.mapping.right);
+    handle_digital_button(psdata[2] & 0x10, &config_sram.mapping.up);
+    handle_digital_button(psdata[2] & 0x08, &config_sram.mapping.start);
+    handle_digital_button(psdata[3] & 0x20, &config_sram.mapping.a);
+    handle_digital_button(psdata[3] & 0x10, &config_sram.mapping.b);
+    handle_digital_button(psdata[3] & 0x08, &config_sram.mapping.r);
 }
 
 usbMsgLen_t usbFunctionSetup(uchar data[8])
@@ -256,10 +357,15 @@ static void usb_reenumerate(void)
 int __attribute__((noreturn)) main(void)
 {
     wdt_enable(WDTO_1S);
+
     TCCR0B = 3;                 /* required by osctune.h */
+
+    config_init();
+
     usbInit();
     ps_init();
     usb_reenumerate();
+
     sei();
 
     for (;;) {                /* main event loop */
