@@ -20,12 +20,6 @@
    ================================================================ */
 
 typedef struct {
-    uchar x : 4;
-    uchar y : 4;
-    uchar z;
-    uchar rx;
-    uchar ry;
-    uchar rz;
     union {
         uint16_t value;
         struct {
@@ -47,6 +41,12 @@ typedef struct {
             uchar b16 : 1;
         } b;
     } buttons;
+    uchar x : 4;
+    uchar y : 4;
+    uchar z;
+    uchar rx;
+    uchar ry;
+    uchar rz;
 } report_t;
 
 char lastTimer0Value;           /* required by osctune.h */
@@ -118,9 +118,12 @@ static void ps_main(void)
     handle_digital_button(psdata[3] & 0x08, &setting->mapping.r);
 }
 
+typedef void (*write_callback_t)(void);
+
 static uchar *_current_pointer;
 static uchar _bytes_remaining;
-static void *_callback;
+static write_callback_t _callback;
+static uchar _fire_callback;
 
 static usbMsgLen_t start_function_read_transfer(void *data, uchar len)
 {
@@ -128,11 +131,12 @@ static usbMsgLen_t start_function_read_transfer(void *data, uchar len)
     _bytes_remaining = len;
     return USB_NO_MSG;
 }
-static usbMsgLen_t start_function_write_transfer(void *data, uchar maxlen, void *callback)
+static usbMsgLen_t start_function_write_transfer(void *data, uchar maxlen, write_callback_t callback)
 {
     _current_pointer = data;
     _bytes_remaining = maxlen;
     _callback = callback;
+    _fire_callback = 0;
     return USB_NO_MSG;
 }
 
@@ -152,7 +156,7 @@ uchar usbFunctionRead(uchar *data, uchar len)
 /* usbFunctionWrite() is called when the host sends a chunk of data to the
  * device. For more information see the documentation in usbdrv/usbdrv.h.
  */
-uchar usbFunctionWrite(uchar *data, uchar len)
+static uchar _usbFunctionWrite(uchar *data, uchar len)
 {
     if (_bytes_remaining == 0)
         return 1;               /* end of transfer */
@@ -163,6 +167,14 @@ uchar usbFunctionWrite(uchar *data, uchar len)
     _bytes_remaining -= len;
     return _bytes_remaining == 0; /* return 1 if this was the last chunk */
 }
+uchar usbFunctionWrite(uchar *data, uchar len)
+{
+    uchar ret = _usbFunctionWrite(data, len);
+    if (ret) {
+        _fire_callback = 1;
+    }
+    return ret;
+}
 
 static usbMsgLen_t handle_get_report_input(usbRequest_t *rq)
 {
@@ -172,11 +184,16 @@ static usbMsgLen_t handle_get_report_input(usbRequest_t *rq)
 
 static usbMsgLen_t handle_get_report_feature(usbRequest_t *rq)
 {
+#if 0
     usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
     if (len > rq->wLength.word)
         len = rq->wLength.word;
     usbMsgPtr = psdata;
     return len;
+#else
+    usbMsgPtr = (void *)setting_get();
+    return sizeof(setting_t);
+#endif
 }
 
 static usbMsgLen_t handle_set_report_output(usbRequest_t *rq)
@@ -184,9 +201,15 @@ static usbMsgLen_t handle_set_report_output(usbRequest_t *rq)
     return 0;
 }
 
+void set_report_feature_transfer_completed(void)
+{
+    setting_update();
+}
+
 static usbMsgLen_t handle_set_report_feature(usbRequest_t *rq)
 {
-    return 0;
+    start_function_write_transfer(setting_get(), sizeof(setting_t), &set_report_feature_transfer_completed);
+    return USB_NO_MSG;
 }
 
 usbMsgLen_t usbFunctionSetup(uchar data[8])
@@ -245,6 +268,11 @@ int __attribute__((noreturn)) main(void)
     for (;;) {                /* main event loop */
         wdt_reset();
         usbPoll();
+        if (_fire_callback) {
+            _callback();
+            _callback = NULL;
+            _fire_callback = 0;
+        }
         if (usbInterruptIsReady()) {
             /* called after every poll of the interrupt endpoint */
             ps_main();
