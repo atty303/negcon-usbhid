@@ -8,7 +8,6 @@
 #include <string.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
-#include <avr/pgmspace.h>
 #include <avr/wdt.h>
 #include <util/delay.h>
 #include "usbdrv/usbdrv.h"

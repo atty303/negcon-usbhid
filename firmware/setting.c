@@ -1,3 +1,5 @@
+/* -*- c-file-style: "stroustrup"; indent-tabs-mode: nil; -*- */
+
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 

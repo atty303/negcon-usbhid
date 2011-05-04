@@ -1,3 +1,5 @@
+/* -*- c-file-style: "stroustrup"; indent-tabs-mode: nil; -*- */
+
 #include <avr/io.h>
 #include <util/delay.h>
 #include "usbdrv/usbdrv.h"
