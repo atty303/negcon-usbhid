@@ -20,14 +20,6 @@
    ================================================================ */
 
 typedef struct {
-    struct {
-        uint8_t x : 8;
-        uint8_t y : 8;
-        uint8_t z : 4;
-        uint8_t rx : 4;
-        uint8_t ry : 4;
-        uint8_t rz : 4;
-    } axis;
     union {
         uint16_t value;
         struct {
@@ -49,6 +41,14 @@ typedef struct {
             uchar b16 : 1;
         } b;
     } buttons;
+    struct {
+        uint8_t x : 8;
+        uint8_t y : 8;
+        uint8_t z : 4;
+        uint8_t rx : 4;
+        uint8_t ry : 4;
+        uint8_t rz : 4;
+    } axis;
 } report_t;
 
 char lastTimer0Value;           /* required by osctune.h */
@@ -146,9 +146,9 @@ static void ps_main(void)
 
     /* ねじり 0x00 - 0x80 - 0xFF */
     /* handle_axis(psdata[4], &setting->mapping.negi_neg, &setting->calibration.negi_neg,  setting->calibration.negi_center); */
-    reportBuffer.axis.x = psdata[4];
+    reportBuffer.axis.x = (uchar)((int16_t)psdata[4] - 0x80);
 
-    reportBuffer.axis.y = 0x80;
+    reportBuffer.axis.y = 0;
 
     /* I Button */
     reportBuffer.axis.rx = psdata[5] & 0x0F;
