@@ -63,6 +63,7 @@
 #define L_DELIMITER(s)		_ITEM_LOCAL(10, s)
 
 
+/* USB report descriptor, size must match usbconfig.h */
 PROGMEM char usbHidReportDescriptor[40] = {
   G_USAGE_PAGE(1), 0x01,      /* Generic Desktop */
   L_USAGE(1), 0x04,           /* Joystick */
