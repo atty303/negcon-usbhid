@@ -20,6 +20,14 @@
    ================================================================ */
 
 typedef struct {
+    struct {
+        uint8_t x : 8;
+        uint8_t y : 8;
+        uint8_t z : 4;
+        uint8_t rx : 4;
+        uint8_t ry : 4;
+        uint8_t rz : 4;
+    } axis;
     union {
         uint16_t value;
         struct {
@@ -41,12 +49,6 @@ typedef struct {
             uchar b16 : 1;
         } b;
     } buttons;
-    uchar x : 4;
-    uchar y : 4;
-    uchar z;
-    uchar rx;
-    uchar ry;
-    uchar rz;
 } report_t;
 
 char lastTimer0Value;           /* required by osctune.h */
@@ -64,9 +66,17 @@ static inline uchar map_button(uchar m)
 {
     return m & 0x0F;
 }
+static inline uchar is_map_to_axis(uchar m)
+{
+    uchar v = (m & 0xF0);
+    return v > 0 && v < 15;
+}
 static inline uchar is_map_to_none(uchar m)
 {
     return (m & 0xFF) == 0xFF;
+}
+static inline void set_axis_value(uchar m)
+{
 }
 
 static void handle_digital_button(uchar statebit, uchar *mapping)
@@ -80,9 +90,50 @@ static void handle_digital_button(uchar statebit, uchar *mapping)
         }
     }
 }
-static void handle_linear_analog(uchar state, uchar *mapping, calibrate_t *calib)
+#define AXIS_MAX 0xFF
+static void handle_axis(uchar state, map_t *map, calibrate_t *calib, uchar center)
 {
-    
+    uchar val[2], max[2], i = 2;
+
+    max[0] = center - 1;
+    max[1] = 0xFF - center;
+
+    if (state <= center) {
+        val[0] = center - state;
+        val[1] = 0;
+    } else {
+        val[0] = 0;
+        val[1] = state - center;
+    }
+
+    while (i--) {
+        /* scaling to 0..255 */
+        /* (/ (* 127 255) 127)  */
+        val[i] = (uchar)((uint16_t)val[i] * AXIS_MAX / max[i]);
+
+        if (val[i] > calib[i].higher_threshold) {
+            val[i] = calib[i].higher_threshold;
+        }
+        if (val[i] < calib[i].lower_threshold) {
+            val[i] = calib[i].lower_threshold;
+        } else {
+            val[i] -= calib[i].lower_threshold;
+        }
+        max[i] -= calib[i].lower_threshold + (0xFF - calib[i].higher_threshold);
+
+        /* rescaling */
+        val[i] = (uchar)((uint16_t)val[i] * AXIS_MAX / max[i]);
+
+        /* map */
+        if (is_map_to_button(map[i])) {
+            if (val[i]) {
+                reportBuffer.buttons.value |= _BV(map_button(map[i]));
+            } else {
+                reportBuffer.buttons.value &= ~_BV(map_button(map[i]));
+            }
+        } else if (is_map_to_axis(map[i])) {
+        }
+    }
 }
 
 /* PS device
@@ -93,20 +144,22 @@ static void ps_main(void)
     setting_t *setting = setting_get();
     ps_read(psdata);
 
-    reportBuffer.x = 8;
-    reportBuffer.y = 8;
-
     /* ねじり 0x00 - 0x80 - 0xFF */
-    reportBuffer.z = psdata[4];
+    /* handle_axis(psdata[4], &setting->mapping.negi_neg, &setting->calibration.negi_neg,  setting->calibration.negi_center); */
+    reportBuffer.axis.x = psdata[4];
+
+    reportBuffer.axis.y = 0x80;
 
     /* I Button */
-    reportBuffer.rx = psdata[5];
+    reportBuffer.axis.rx = psdata[5] & 0x0F;
 
     /* II Button */
-    reportBuffer.ry = psdata[6];
+    reportBuffer.axis.ry = psdata[6] & 0x0F;
 
     /* L Button */
-    reportBuffer.ry = psdata[7];
+    reportBuffer.axis.z = psdata[7] & 0x0F;
+
+    reportBuffer.axis.rz = 0x08;
 
     handle_digital_button(psdata[2] & 0x80, &setting->mapping.left);
     handle_digital_button(psdata[2] & 0x40, &setting->mapping.down);
