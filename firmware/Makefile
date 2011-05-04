@@ -17,7 +17,7 @@
 DEVICE     = atmega88p
 CLOCK      = 12800000
 PROGRAMMER = -c diecimila -P ft0 -B 38400
-OBJECTS    = main.o \
+OBJECTS    = main.o hid.o \
 	usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
 FUSES      = -U hfuse:w:0xdf:m -U lfuse:w:0xe2:m
 # ATMega88p fuse bits (fuse bits for other devices are different!):

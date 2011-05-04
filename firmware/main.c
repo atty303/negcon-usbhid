@@ -5,6 +5,7 @@
  * License: GPLv2
  */
 
+#include <string.h>
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
@@ -110,6 +111,7 @@ typedef struct {
 } report_t;
 
 /* USB report descriptor, size must match usbconfig.h */
+/*
 PROGMEM char usbHidReportDescriptor[63] = {
     0x05, 0x01,                 // USAGE_PAGE (Generic Desktop)
     0x09, 0x04,                 // USAGE (Joystick)
@@ -147,6 +149,7 @@ PROGMEM char usbHidReportDescriptor[63] = {
     0xc0,                       //   END_COLLECTION
     0xc0,                       // END_COLLECTION
 };
+*/
 
 EEMEM static config_t config_eeprom;
 static config_t config_sram;
@@ -313,31 +316,100 @@ static void ps_main(void)
     handle_digital_button(psdata[3] & 0x08, &config_sram.mapping.r);
 }
 
+static uchar *_current_pointer;
+static uchar _bytes_remaining;
+static void *_callback;
+
+static usbMsgLen_t start_function_read_transfer(void *data, uchar len)
+{
+    _current_pointer = data;
+    _bytes_remaining = len;
+    return USB_NO_MSG;
+}
+static usbMsgLen_t start_function_write_transfer(void *data, uchar maxlen, void *callback)
+{
+    _current_pointer = data;
+    _bytes_remaining = maxlen;
+    _callback = callback;
+    return USB_NO_MSG;
+}
+
+/* usbFunctionRead() is called when the host requests a chunk of data from
+ * the device. For more information see the documentation in usbdrv/usbdrv.h.
+ */
+uchar usbFunctionRead(uchar *data, uchar len)
+{
+    if (len > _bytes_remaining)
+        len = _bytes_remaining;
+    memcpy(data, _current_pointer, len);
+    _current_pointer += len;
+    _bytes_remaining -= len;
+    return len;
+}
+
+/* usbFunctionWrite() is called when the host sends a chunk of data to the
+ * device. For more information see the documentation in usbdrv/usbdrv.h.
+ */
+uchar usbFunctionWrite(uchar *data, uchar len)
+{
+    if (_bytes_remaining == 0)
+        return 1;               /* end of transfer */
+    if (len > _bytes_remaining)
+        len = _bytes_remaining;
+    memcpy(_current_pointer, data, len);
+    _current_pointer += len;
+    _bytes_remaining -= len;
+    return _bytes_remaining == 0; /* return 1 if this was the last chunk */
+}
+
+static usbMsgLen_t handle_get_report_input(usbRequest_t *rq)
+{
+    usbMsgPtr = (void *)&reportBuffer;
+    return sizeof(reportBuffer);
+}
+
+static usbMsgLen_t handle_get_report_feature(usbRequest_t *rq)
+{
+    usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
+    if (len > rq->wLength.word)
+        len = rq->wLength.word;
+    usbMsgPtr = psdata;
+    return len;
+}
+
+static usbMsgLen_t handle_set_report_output(usbRequest_t *rq)
+{
+    return 0;
+}
+
+static usbMsgLen_t handle_set_report_feature(usbRequest_t *rq)
+{
+    return 0;
+}
+
 usbMsgLen_t usbFunctionSetup(uchar data[8])
 {
     usbRequest_t *rq = (void *)data;
 
-    /* The following requests are never used. But since they are required by
-     * the specification, we implement them in this example.
-     */
-    if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS) {    /* class request type */
-        if (rq->bRequest == USBRQ_HID_GET_REPORT) {  /* wValue: ReportType (highbyte), ReportID (lowbyte) */
-            /* we only have one report type, so don't look at wValue */
-            usbMsgPtr = (void *)&reportBuffer;
-            return sizeof(reportBuffer);
+    if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_CLASS) {
+        if (rq->bRequest == USBRQ_HID_GET_REPORT) {
+            /* wValue: ReportType (highbyte), ReportID (lowbyte) */
+            if (rq->wValue.bytes[1] == 1) {
+                return handle_get_report_input(rq);
+            } else if (rq->wValue.bytes[1] == 3) {
+                return handle_get_report_feature(rq);
+            }
+        } else if (rq->bRequest == USBRQ_HID_SET_REPORT) {
+            if (rq->wValue.bytes[1] == 2) {
+                return handle_set_report_output(rq);
+            } else if (rq->wValue.bytes[1] == 3) {
+                return handle_set_report_feature(rq);
+            }
         } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
             usbMsgPtr = &idleRate;
             return 1;
         } else if (rq->bRequest == USBRQ_HID_SET_IDLE) {
             idleRate = rq->wValue.bytes[1];
-        }
-    } else {
-        if (rq->bRequest == 0x01) {
-            usbMsgLen_t len = 2 + ((psdata[0] & 0x0f) * 2);
-            if (len > rq->wLength.word)
-                len = rq->wLength.word;
-            usbMsgPtr = psdata;
-            return len;
         }
     }
     return 0;   /* default for not implemented requests: return no data back to host */
