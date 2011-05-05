@@ -55,7 +55,6 @@ char lastTimer0Value;           /* required by osctune.h */
 
 static uchar psdata[34];
 static report_t reportBuffer;
-static uchar idleRate; /* repeat rate for keyboards, never used for mice */
 
 
 static inline uchar is_map_to_button(uchar m)
@@ -267,11 +266,6 @@ usbMsgLen_t usbFunctionSetup(uchar data[8])
             } else if (rq->wValue.bytes[1] == 3) {
                 return handle_set_report_feature(rq);
             }
-        } else if (rq->bRequest == USBRQ_HID_GET_IDLE) {
-            usbMsgPtr = &idleRate;
-            return 1;
-        } else if (rq->bRequest == USBRQ_HID_SET_IDLE) {
-            idleRate = rq->wValue.bytes[1];
         }
     }
     return 0;   /* default for not implemented requests: return no data back to host */
