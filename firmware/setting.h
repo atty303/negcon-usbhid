@@ -17,7 +17,7 @@ typedef struct setting_t {
        A A A A x x D D -- direction 0: 0x00 -> 0xFF, 1: 0x80 -> 0xFF, 2: 0xFF -> 0x00 3: .0x80 -> 0x00
        \     /
         ------ map to axis
-               0: (reserved), 1: x, 2: y, 3: z, 4: rx, 5: ry, 6: rz, 7: N/A, 15: (reserved)
+               0: (reserved), 1: (x), 2: (y), 3: z, 4: rx, 5: ry, 6: rz, 7: N/A, 15: (reserved)
 
        1 1 1 1 1 1 1 1
      */
@@ -36,28 +36,14 @@ typedef struct setting_t {
         map_t i;
         map_t ii;
         map_t l;
-        /* ねじり 0x00..0x80..0xFF */
-        map_t negi_neg;         /* 0x80 -> 0x00 */
-        map_t negi_pos;         /* 0x80 -> 0xFF */
-    } mapping;                  /* 12 bytes */
+    } mapping;                  /* 11 bytes */
 
     struct {
         calibrate_t i;
         calibrate_t ii;
         calibrate_t l;
-        calibrate_t negi_neg;
-        calibrate_t negi_pos;
-        uint8_t negi_center;
-    } calibration;              /* 11 bytes */
-
-    struct {
-        uint8_t i : 2;
-        uint8_t ii : 2;
-        uint8_t l : 2;
-        uint8_t negi_neg : 2;
-        uint8_t negi_pos : 2;
-    } curve;                    /* 2 bytes */
-} setting_t;                     /* 25 bytes */
+    } calibration;              /* 6 bytes */
+} setting_t;			/* 17 bytes */
 
 
 void setting_init(void);

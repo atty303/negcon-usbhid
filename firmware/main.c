@@ -68,15 +68,19 @@ static inline uchar map_button(uchar m)
 }
 static inline uchar is_map_to_axis(uchar m)
 {
-    uchar v = (m & 0xF0);
-    return v > 0 && v < 15;
+    uchar v = (m & 0xF0) >> 4;
+    return (v > 0) && (v < 15);
 }
 static inline uchar is_map_to_none(uchar m)
 {
     return (m & 0xFF) == 0xFF;
 }
-static inline void set_axis_value(uchar m)
+static void set_axis_value(uchar m, uchar v)
 {
+    m = (m & 0xF0) >> 4;
+    if (m >= 3 && m <= 6) {
+        *(&reportBuffer.axis.z + (m - 3)) = v;
+    }
 }
 
 static void handle_digital_button(uchar statebit, uchar *mapping)
@@ -88,51 +92,36 @@ static void handle_digital_button(uchar statebit, uchar *mapping)
         } else {
             reportBuffer.buttons.value &= ~_BV(map_button(*mapping));
         }
+    } else if (is_map_to_axis(*mapping)) {
+        set_axis_value(*mapping, statebit ? 0x00 : 0xFF);
     }
 }
-#define AXIS_MAX 0xFF
-static void handle_axis(uchar state, map_t *map, calibrate_t *calib, uchar center)
+
+static void handle_analog(uchar state, map_t *map, calibrate_t *calib)
 {
-    uchar val[2], max[2], i = 2;
+    uchar range;
 
-    max[0] = center - 1;
-    max[1] = 0xFF - center;
-
-    if (state <= center) {
-        val[0] = center - state;
-        val[1] = 0;
-    } else {
-        val[0] = 0;
-        val[1] = state - center;
+    /* calibrattion */
+    if (state > calib->higher_threshold) {
+        state = calib->higher_threshold;
+    }
+    if (state < calib->lower_threshold) {
+        state = calib->lower_threshold;
     }
 
-    while (i--) {
-        /* scaling to 0..255 */
-        /* (/ (* 127 255) 127)  */
-        val[i] = (uchar)((uint16_t)val[i] * AXIS_MAX / max[i]);
+    /* normalize */
+    range = calib->higher_threshold - calib->lower_threshold;
+    state = (uchar)((uint16_t)(state - calib->lower_threshold) * 0xFF / range);
 
-        if (val[i] > calib[i].higher_threshold) {
-            val[i] = calib[i].higher_threshold;
-        }
-        if (val[i] < calib[i].lower_threshold) {
-            val[i] = calib[i].lower_threshold;
+    /* map */
+    if (is_map_to_button(*map)) {
+        if (state) {
+            reportBuffer.buttons.value |= _BV(map_button(*map));
         } else {
-            val[i] -= calib[i].lower_threshold;
+            reportBuffer.buttons.value &= ~_BV(map_button(*map));
         }
-        max[i] -= calib[i].lower_threshold + (0xFF - calib[i].higher_threshold);
-
-        /* rescaling */
-        val[i] = (uchar)((uint16_t)val[i] * AXIS_MAX / max[i]);
-
-        /* map */
-        if (is_map_to_button(map[i])) {
-            if (val[i]) {
-                reportBuffer.buttons.value |= _BV(map_button(map[i]));
-            } else {
-                reportBuffer.buttons.value &= ~_BV(map_button(map[i]));
-            }
-        } else if (is_map_to_axis(map[i])) {
-        }
+    } else if (is_map_to_axis(*map)) {
+        set_axis_value(*map, state);
     }
 }
 
@@ -142,24 +131,19 @@ static void handle_axis(uchar state, map_t *map, calibrate_t *calib, uchar cente
 static void ps_main(void)
 {
     setting_t *setting = setting_get();
+
     ps_read(psdata);
 
-    /* ねじり 0x00 - 0x80 - 0xFF */
-    /* handle_axis(psdata[4], &setting->mapping.negi_neg, &setting->calibration.negi_neg,  setting->calibration.negi_center); */
+    memset(&reportBuffer, 0, sizeof(reportBuffer));
+
+    /* ねじり */
     reportBuffer.axis.x = (uchar)((int16_t)psdata[4] - 0x80);
-
-    reportBuffer.axis.y = 0;
-
     /* I Button */
-    reportBuffer.axis.rx = psdata[5] & 0x0F;
-
+    handle_analog(psdata[5], &setting->mapping.i, &setting->calibration.i);
     /* II Button */
-    reportBuffer.axis.ry = psdata[6] & 0x0F;
-
+    handle_analog(psdata[6], &setting->mapping.ii, &setting->calibration.ii);
     /* L Button */
-    reportBuffer.axis.z = psdata[7] & 0x0F;
-
-    reportBuffer.axis.rz = 0x08;
+    handle_analog(psdata[7], &setting->mapping.l, &setting->calibration.l);
 
     handle_digital_button(psdata[2] & 0x80, &setting->mapping.left);
     handle_digital_button(psdata[2] & 0x40, &setting->mapping.down);
@@ -178,7 +162,7 @@ static uchar _bytes_remaining;
 static write_callback_t _callback;
 static uchar _fire_callback;
 
-static usbMsgLen_t start_function_read_transfer(void *data, uchar len)
+static __attribute__((unused)) usbMsgLen_t start_function_read_transfer(void *data, uchar len)
 {
     _current_pointer = data;
     _bytes_remaining = len;
