@@ -92,7 +92,7 @@ static void handle_digital_button(uchar statebit, uchar *mapping)
             reportBuffer.buttons.value &= ~_BV(map_button(*mapping));
         }
     } else if (is_map_to_axis(*mapping)) {
-        set_axis_value(*mapping, statebit ? 0x00 : 0xFF);
+        set_axis_value(*mapping, statebit ? 0 : (uchar)-128);
     }
 }
 
@@ -110,7 +110,7 @@ static void handle_analog(uchar state, map_t *map, calibrate_t *calib)
 
     /* normalize */
     range = calib->higher_threshold - calib->lower_threshold;
-    state = (uchar)((uint16_t)(state - calib->lower_threshold) * 0xFF / range);
+    state = (uchar)(-(int16_t)(state - calib->lower_threshold) * 128 / range);
 
     /* map */
     if (is_map_to_button(*map)) {
