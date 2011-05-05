@@ -6,7 +6,7 @@
 #include "hid_intern.h"
 
 /* USB report descriptor, size must match usbconfig.h */
-PROGMEM char usbHidReportDescriptor[62+16] = {
+PROGMEM char usbHidReportDescriptor[79] = {
   G_USAGE_PAGE(1), 0x01,        /* Generic Desktop */
   L_USAGE(1), 0x04,             /* Joystick */
   M_COLLECTION(1), C_APPLICATION,
@@ -36,8 +36,8 @@ PROGMEM char usbHidReportDescriptor[62+16] = {
       L_USAGE(1), 0x34,         /* Ry */
       L_USAGE(1), 0x35,         /* Rz */
       G_LOGICAL_MINIMUM(1), 0x00,
-      G_LOGICAL_MAXIMUM(1), 0x0F,
-      G_REPORT_SIZE(1), 0x04,
+      G_LOGICAL_MAXIMUM(2), 0xFF, 0x00,
+      G_REPORT_SIZE(1), 0x08,
       G_REPORT_COUNT(1), 0x04,
       M_INPUT(1), IOF_VARIABLE,
     M_END_COLLECTION(0),
@@ -53,5 +53,3 @@ PROGMEM char usbHidReportDescriptor[62+16] = {
 
   M_END_COLLECTION(0),
 };
-
-

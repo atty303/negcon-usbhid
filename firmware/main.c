@@ -42,12 +42,12 @@ typedef struct {
         } b;
     } buttons;
     struct {
-        uint8_t x : 8;
-        uint8_t y : 8;
-        uint8_t z : 4;
-        uint8_t rx : 4;
-        uint8_t ry : 4;
-        uint8_t rz : 4;
+        uint8_t x;
+        uint8_t y;
+        uint8_t z;
+        uint8_t rx;
+        uint8_t ry;
+        uint8_t rz;
     } axis;
 } report_t;
 
